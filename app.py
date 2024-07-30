@@ -15,7 +15,7 @@ csv_file_path = os.path.join(os.path.dirname(__file__), 'data', 'median_home_pri
 
 # Load data from CSV
 data = pd.read_csv(csv_file_path)
-data.columns = ['County'] + [str(year) for year in range(2015, 2023)]
+data.columns = ['County'] + [str(year) for year in range(2015, 2025)]  # Update the range to include 2023 and 2024
 
 # List of available counties for search
 available_counties = data['County'].tolist()
@@ -49,7 +49,7 @@ def search():
 @app.route('/plot')
 def plot():
     counties = request.args.getlist('counties')
-    show_predictions = request.args.get('show_predictions', 'true') == 'true'
+    show_predictions = request.args.get('show_predictions', 'false') == 'true'  # Default to false
     fig = go.Figure()
 
     for county in counties:
@@ -69,26 +69,31 @@ def plot():
         prices = county_data[1:].tolist()
 
         # Add historical data to the plot
-        fig.add_trace(go.Scatter(x=years, y=prices, mode='lines+markers', name=trace_name, line=dict(color=color)))
+        fig.add_trace(go.Scatter(x=years, y=prices, mode='lines+markers', name=trace_name, line=dict(color=color, shape='spline', smoothing=1.3)))
 
         if show_predictions:
             try:
                 # Fetch predicted data from the polynomial regression microservice
                 print(f"Requesting predictions for county: {county}")
-                response = requests.post('http://127.0.0.1:5000/predict', json={'county': county})
+                response = requests.post('http://127.0.0.1:5001/predict', json={'county': county})
                 response.raise_for_status()  # Raise an HTTPError for bad responses (4xx or 5xx)
                 predicted_data = response.json()
 
                 # Log the predicted data
                 print(f"Predicted data for {county}: {predicted_data}")
 
-                # Add predicted data to the plot
-                future_years = list(predicted_data.keys())
+                # Ensure prediction data matches format
+                future_years = list(map(str, predicted_data.keys()))
                 future_prices = list(predicted_data.values())
 
                 # Lighten the color for the prediction trace
                 lighter_color = lighten_color(color, amount=0.5)
-                fig.add_trace(go.Scatter(x=future_years, y=future_prices, mode='lines+markers', name=trace_name + " (Predicted)", line=dict(dash='dot', color=lighter_color)))
+
+                # Add the dotted line connecting the last historical point to the first predicted point
+                fig.add_trace(go.Scatter(x=[years[-1], future_years[0]], y=[prices[-1], future_prices[0]], mode='lines', name=trace_name + " (Transition)", line=dict(dash='dot', color=color)))
+
+                # Add predicted data to the plot
+                fig.add_trace(go.Scatter(x=future_years, y=future_prices, mode='lines+markers', name=trace_name + " (Predicted)", line=dict(dash='dot', color=lighter_color, shape='spline', smoothing=1.3)))
             except requests.exceptions.RequestException as e:
                 print(f"Prediction service error for county {county}: {e}")
                 continue
