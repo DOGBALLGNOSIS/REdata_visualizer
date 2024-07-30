@@ -18,12 +18,18 @@ def predict():
     # Extract county from request
     county = request.json.get('county')
     if county not in data['County'].values:
+        print(f"County not found: {county}")
         return jsonify({'error': 'County not found'}), 404
     
     # Prepare data for polynomial regression
     county_data = data[data['County'] == county].drop(columns=['County'])
     years = np.array(county_data.columns, dtype=int).reshape(-1, 1)
     prices = county_data.values.flatten()
+    
+    # Debugging: Log the input data
+    print(f"County: {county}")
+    print(f"Years: {years.flatten()}")
+    print(f"Prices: {prices}")
     
     # Transform the data for polynomial regression
     poly = PolynomialFeatures(degree=2)
@@ -38,8 +44,16 @@ def predict():
     future_years_poly = poly.transform(future_years)
     future_prices = model.predict(future_years_poly)
     
+    # Debugging: Log the predictions
+    print(f"Future Years: {future_years.flatten()}")
+    print(f"Future Prices: {future_prices}")
+    
     # Prepare response
     response = {year: price for year, price in zip(future_years.flatten(), future_prices.flatten())}
+    
+    # Debugging: Log the response
+    print(f"Response: {response}")
+
     return jsonify(response)
 
 if __name__ == '__main__':

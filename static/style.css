@@ -40,20 +40,26 @@ body {
     font-size: 1em;
 }
 
-.result-list {
+.dropdown-list {
     list-style: none;
     padding: 0;
     margin: 0;
+    border: 1px solid #34495e;
+    border-radius: 3px;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
-.result-list li {
-    cursor: pointer;
+.dropdown-item {
     padding: 10px;
+    cursor: pointer;
     border-bottom: 1px solid #34495e;
+    background-color: #34495e;
+    color: white;
 }
 
-.result-list li:hover {
-    background-color: #34495e;
+.dropdown-item:hover {
+    background-color: #2c3e50;
 }
 
 .current-entries ul {
@@ -82,6 +88,16 @@ body {
 
 .current-entries button:hover {
     background-color: #c0392b;
+}
+
+.toggle-predictions {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+}
+
+.toggle-predictions input {
+    margin-right: 10px;
 }
 
 .content {
