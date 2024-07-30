@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zillow Visualizer</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Search county/city to display" onkeyup="searchCounty()">
+                <ul id="result-list"></ul>
+            </div>
+            <div class="current-entries">
+                <h3>Current Entries</h3>
+                <ul id="current-list"></ul>
+            </div>
+        </div>
+        <div class="content">
+            <div class="graph-container">
+                <div id="plot"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentCounties = [];
+
+        function searchCounty() {
+            let query = $('#search-input').val();
+            $.ajax({
+                url: '/search',
+                data: { q: query },
+                success: function(data) {
+                    let resultList = $('#result-list');
+                    resultList.empty();
+                    data.forEach(function(item) {
+                        resultList.append('<li onclick="addCounty(\'' + item + '\')">' + item + '</li>');
+                    });
+                }
+            });
+        }
+
+        function addCounty(county) {
+            if (!currentCounties.includes(county)) {
+                currentCounties.push(county);
+                updateCurrentList();
+                plotData();
+            }
+        }
+
+        function removeCounty(county) {
+            currentCounties = currentCounties.filter(c => c !== county);
+            updateCurrentList();
+            plotData();
+        }
+
+        function updateCurrentList() {
+            let currentList = $('#current-list');
+            currentList.empty();
+            currentCounties.forEach(function(county) {
+                currentList.append('<li>' + county + ' <button onclick="removeCounty(\'' + county + '\')">Remove</button></li>');
+            });
+        }
+
+        function plotData() {
+            $.ajax({
+                url: '/plot',
+                data: { counties: currentCounties },
+                traditional: true,
+                success: function(data) {
+                    let graph = document.getElementById('plot');
+                    Plotly.newPlot(graph, JSON.parse(data));
+                }
+            });
+        }
+
+        // Auto-select sample dataset on page load
+        $(document).ready(function() {
+            addCounty('County1, State1');
+        });
+    </script>
+</body>
+</html>
