@@ -23,10 +23,14 @@
                     <input type="checkbox" id="toggle-predictions">
                     <label for="toggle-predictions">Show Predictions</label>
                 </div>
+                <div class="toggle-heatmap">
+                    <input type="checkbox" id="toggle-heatmap">
+                    <label for="toggle-heatmap">Show Heatmap</label>
+                </div>
             </div>
         </div>
         <div class="content">
-            <div class="graph-container">
+            <div class="graph-container" id="graph-container">
                 <div id="plot"></div>
             </div>
         </div>
@@ -76,37 +80,40 @@
         }
 
         function plotData() {
-            let showPredictions = $('#toggle-predictions').is(':checked');
-            $.ajax({
-                url: '/plot',
-                data: { 
-                    counties: currentCounties, 
-                    show_predictions: showPredictions 
-                },
-                traditional: true,
-                success: function(data) {
-                    console.log("Plot data received:", data);  // Debug log
-                    let graph = document.getElementById('plot');
-                    let parsedData = JSON.parse(data);
+    let showPredictions = $('#toggle-predictions').is(':checked');
+    let showHeatmap = $('#toggle-heatmap').is(':checked');
+    let year = $('#time-slider').val();
 
-                    console.log("Parsed data:", parsedData);  // Debug log
+    if (showHeatmap) {
+        window.location.href = `/heatmap?year=${year}&show_heatmap=true`;
+    } else {
+        $.ajax({
+            url: '/plot',
+            data: { 
+                counties: currentCounties, 
+                show_predictions: showPredictions,
+                year: year
+            },
+            traditional: true,
+            success: function(data) {
+                let graph = document.getElementById('plot');
+                let parsedData = JSON.parse(data);
+                Plotly.newPlot(graph, parsedData.data, parsedData.layout);
+            },
+            error: function(xhr, status, error) {
+                console.error('Error plotting data:', error);
+            }
+        });
+    }
+}
 
-                    if (parsedData.data && parsedData.data.length > 0) {
-                        Plotly.newPlot(graph, parsedData.data, parsedData.layout);  // Ensure correct plot function parameters
-                    } else {
-                        console.error('Plot data is empty or invalid.');
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error('Error plotting data:', error);
-                }
-            });
-        }
 
-        // Auto-select sample dataset on page load
         $(document).ready(function() {
             addCounty('Snohomish');
             $('#toggle-predictions').change(function() {
+                plotData();
+            });
+            $('#toggle-heatmap').change(function() {
                 plotData();
             });
         });
