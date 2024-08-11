@@ -33,6 +33,16 @@ document.addEventListener('DOMContentLoaded', function() {
         window.location.href = '/';
     });
 
+    var derivativeButton = document.createElement('button');
+    derivativeButton.textContent = 'Toggle Derivative Mode';
+    derivativeButton.className = 'btn btn-secondary btn-sm mt-2';
+    derivativeButton.style.marginTop = '10px';
+
+    derivativeButton.addEventListener('click', function() {
+        toggleDerivativeMode(yearSlider.value);
+    });
+
+    sliderContainer.appendChild(derivativeButton);
     sliderContainer.appendChild(backButton);
     document.body.appendChild(sliderContainer);
 
@@ -43,6 +53,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateHeatmap(year) {
         const url = new URL(window.location.href);
+        url.searchParams.set('year', year);
+        url.searchParams.set('show_heatmap', 'true');
+        window.location.href = url.toString();
+    }
+
+    function toggleDerivativeMode(year) {
+        const url = new URL(window.location.href);
+        url.pathname = '/heatmap_derivative_plot';
         url.searchParams.set('year', year);
         url.searchParams.set('show_heatmap', 'true');
         window.location.href = url.toString();

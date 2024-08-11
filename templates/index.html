@@ -27,6 +27,11 @@
                     <input type="checkbox" id="toggle-heatmap">
                     <label for="toggle-heatmap">Show Heatmap</label>
                 </div>
+                <!-- New Toggle for Derivative Heatmap -->
+                <div class="toggle-derivative">
+                    <input type="checkbox" id="toggle-derivative">
+                    <label for="toggle-derivative">Show Derivative Heatmap</label>
+                </div>
             </div>
         </div>
         <div class="content">
@@ -80,32 +85,37 @@
         }
 
         function plotData() {
-    let showPredictions = $('#toggle-predictions').is(':checked');
-    let showHeatmap = $('#toggle-heatmap').is(':checked');
-    let year = $('#time-slider').val();
+            let showPredictions = $('#toggle-predictions').is(':checked');
+            let showHeatmap = $('#toggle-heatmap').is(':checked');
+            let showDerivative = $('#toggle-derivative').is(':checked');
+            let year = $('#time-slider').val() || '2024'; // Default to 2024 if undefined
 
-    if (showHeatmap) {
-        window.location.href = `/heatmap?year=${year}&show_heatmap=true`;
-    } else {
-        $.ajax({
-            url: '/plot',
-            data: { 
-                counties: currentCounties, 
-                show_predictions: showPredictions,
-                year: year
-            },
-            traditional: true,
-            success: function(data) {
-                let graph = document.getElementById('plot');
-                let parsedData = JSON.parse(data);
-                Plotly.newPlot(graph, parsedData.data, parsedData.layout);
-            },
-            error: function(xhr, status, error) {
-                console.error('Error plotting data:', error);
+            console.log("Year from time-slider:", year);
+
+            if (showDerivative) {
+                window.location.href = `/heatmap_derivative_plot?year=${year}&show_heatmap=true`;
+            } else if (showHeatmap) {
+                window.location.href = `/heatmap?year=${year}&show_heatmap=true`;
+            } else {
+                $.ajax({
+                    url: '/plot',
+                    data: { 
+                        counties: currentCounties, 
+                        show_predictions: showPredictions,
+                        year: year
+                    },
+                    traditional: true,
+                    success: function(data) {
+                        let graph = document.getElementById('plot');
+                        let parsedData = JSON.parse(data);
+                        Plotly.newPlot(graph, parsedData.data, parsedData.layout);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error plotting data:', error);
+                    }
+                });
             }
-        });
-    }
-}
+        }
 
 
         $(document).ready(function() {
@@ -114,6 +124,9 @@
                 plotData();
             });
             $('#toggle-heatmap').change(function() {
+                plotData();
+            });
+            $('#toggle-derivative').change(function() { // Add the change handler for the derivative toggle
                 plotData();
             });
         });

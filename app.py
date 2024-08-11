@@ -19,51 +19,30 @@ csv_file_path = r"C:\zillow_visualizer\data\median_home_prices.csv"
 data = pd.read_csv(csv_file_path)
 data.columns = ['County'] + [str(year) for year in range(2015, 2025)]
 
-print("CSV Data Loaded:")
-print(data.head())
-
 # Create a reverse mapping to restore original county names
 reverse_mapping = {county.lower().replace(" ", ""): county for county in data['County']}
-print("Reverse mapping created:")
-print(reverse_mapping)
 
 # Load GeoJSON data (manually pre-parsed for WA data currently)
 geojson_file_path = r"C:\zillow_visualizer\filtered_washington_counties.geojson"
-
-# Check if the GeoJSON file exists
 if not os.path.exists(geojson_file_path):
     raise FileNotFoundError(f"The file {geojson_file_path} does not exist. Please ensure the correct GeoJSON file is available.")
 
-# Load GeoJSON
 geo_df = gpd.read_file(geojson_file_path)
-print("GeoJSON structure (first feature):", geo_df.iloc[0].to_dict())
-
-# Small reformattign
-geo_df = geo_df.rename(columns={'2024': 'Median_Home_Price_2024'})
-
-print("GeoDataFrame Loaded and Processed:")
-print(geo_df[['NAME', 'NAMELSAD']].head())
 
 # List of available counties for search
 available_counties = data['County'].tolist()
-print("Available counties for search:")
-print(available_counties)
-
 
 def random_color():
     return to_hex([random.random() for _ in range(3)])
-
 
 def lighten_color(color, amount=0.5):
     c = to_rgb(color)
     c = [(1 - (1 - x) * (1 - amount)) for x in c]
     return to_hex(c)
 
-
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 @app.route('/search')
 def search():
@@ -77,82 +56,59 @@ def plot():
     show_predictions = request.args.get('show_predictions', 'false') == 'true'
     year = request.args.get('year', '2024')
 
-    print(f"Counties selected for plotting: {counties}")
-    print(f"Show predictions: {show_predictions}, Year: {year}")
-
     # Initialize county_colors dictionary
     county_colors = {}
     fig = go.Figure()
 
     for county in counties:
-        # Fit county name to lowercase for lookup
         transformed_county = county.lower().replace(" ", "")
-
-        # Reverse the transformation to find the correct county name
-        if transformed_county in reverse_mapping:
-            original_county = reverse_mapping[transformed_county]
-        else:
-            print(f"No data found for county: {county}")
+        original_county = reverse_mapping.get(transformed_county)
+        if not original_county:
             continue
 
+        # Check if the county already has a color assigned, if not generate one
         if original_county not in county_colors:
             county_colors[original_county] = random_color()
         color = county_colors[original_county]
-        trace_name = original_county
 
-        county_data = data[data['County'].str.lower().str.replace(" ", "") == transformed_county]
-        if county_data.empty:
-            print(f"No data found for county: {original_county}")
-            continue
-        county_data = county_data.iloc[0]
+        county_data = data[data['County'].str.lower().str.replace(" ", "") == transformed_county].iloc[0]
         years = data.columns[1:].tolist()
         prices = county_data[1:].tolist()
 
-        print(f"Plotting data for {original_county}:")
-        print(f"Years: {years}")
-        print(f"Prices: {prices}")
-
+        # Add actual price trace
         fig.add_trace(go.Scatter(
             x=years,
             y=prices,
             mode='lines+markers',
-            name=trace_name,
+            name=original_county,
             line=dict(color=color, shape='spline', smoothing=1.3)
         ))
 
+        # Only add predictions if show_predictions is true
         if show_predictions:
             try:
                 response = requests.post('http://127.0.0.1:5001/predict', json={'county': original_county})
                 response.raise_for_status()
                 predicted_data = response.json()
-
                 future_years = list(map(str, predicted_data.keys()))
                 future_prices = list(predicted_data.values())
                 lighter_color = lighten_color(color, amount=0.5)
 
-                print(f"Predicted data for {original_county}:")
-                print(f"Future Years: {future_years}")
-                print(f"Future Prices: {future_prices}")
+                # Combine the last actual price with the predicted prices
+                all_years = years + future_years
+                all_prices = prices + future_prices
 
                 fig.add_trace(go.Scatter(
-                    x=[years[-1], future_years[0]],
-                    y=[prices[-1], future_prices[0]],
-                    mode='lines',
-                    name=trace_name + " (Transition)",
-                    line=dict(dash='dot', color=color)
-                ))
-                fig.add_trace(go.Scatter(
-                    x=future_years,
-                    y=future_prices,
+                    x=all_years,
+                    y=all_prices,
                     mode='lines+markers',
-                    name=trace_name + " (Predicted)",
+                    name=f"{original_county} (Predicted)",
                     line=dict(dash='dot', color=lighter_color, shape='spline', smoothing=1.3)
                 ))
             except requests.exceptions.RequestException as e:
                 print(f"Prediction service error for county {original_county}: {e}")
                 continue
 
-    # Convert the plotly figure to JSON
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
     return graphJSON
 
@@ -160,46 +116,18 @@ def plot():
 def heatmap_plot():
     year = request.args.get('year', '2024')
 
-    # Prepare the data for the year selected
-    year_data = data[['County', year]].set_index('County')
-    print(f"Year Data for Heatmap ({year}):")
-    print(year_data.head())
-
-    # Reformat county names in the CSV
     data['County'] = data['County'].str.lower().str.replace(" ", "")
-    print("CSV 'County' values after transformation:")
-    print(data['County'].unique())
-
-    # Reformat county names in GeoJSON
     geo_df['NAME'] = geo_df['NAME'].str.lower().str.replace(" ", "")
-    print("GeoJSON 'NAME' values after transformation:")
-    print(geo_df['NAME'].unique())
-
-    # Perform the merge
     merged = geo_df.set_index('NAME').join(data.set_index('County'), how='inner', lsuffix='_geo', rsuffix='_data')
-    print(f"Merged DataFrame after join ({year}):")
-    print(merged.head())
-
-    # Drop rows with NaN values in the target year column
     merged = merged.dropna(subset=[year])
-
-    print(f"Merged DataFrame after dropping NaNs ({year}):")
-    print(merged.head())
 
     if not merged.empty:
         m = folium.Map(location=[47.7511, -120.7401], zoom_start=6, tiles=None)
-        
-        # Add the grayscale tiles (STILL WIP)
         folium.TileLayer('cartodbpositron', name='Grayscale').add_to(m)
-
-        # Calculate the color scale dynamically based on the data range for the selected year
         min_val = merged[year].min()
         max_val = merged[year].max()
         colormap = folium.LinearColormap(['lightblue', 'darkblue'], vmin=min_val, vmax=max_val)
 
-        print(f"Color scale - Min: {min_val}, Max: {max_val}")
-
-        # Add GeoJson to the map
         folium.GeoJson(
             merged.__geo_interface__,
             style_function=lambda feature: {
@@ -215,20 +143,90 @@ def heatmap_plot():
             )
         ).add_to(m)
 
-        # Add the colormap as a legend
         colormap.caption = f'Median Home Prices in {year}'
         colormap.add_to(m)
-
-        # Save the map to an HTML file for rendering
         m.save('templates/heatmap.html')
-
-        # Inject the slider script
         inject_slider_script('templates/heatmap.html', '/static/slider_control.js')
-
-        return jsonify({"success": True, "year": year})  # Return the selected year with success
+        return jsonify({"success": True, "year": year})
     else:
-        print(f"Error: No valid data available to plot the heatmap for {year}.")
         return jsonify({"success": False, "error": "No valid data to plot."})
+
+@app.route('/heatmap_derivative_plot')
+def heatmap_derivative_plot():
+    year = request.args.get('year', '2024')
+
+    # Prepare the data for the selected year
+    data['County'] = data['County'].str.lower().str.replace(" ", "")
+    geo_df['NAME'] = geo_df['NAME'].str.lower().str.replace(" ", "")
+    merged = geo_df.set_index('NAME').join(data.set_index('County'), how='inner', lsuffix='_geo', rsuffix='_data')
+
+    if '2024_data' in merged.columns:
+        merged = merged.rename(columns={'2024_data': '2024'})
+
+    print("Merged DataFrame before dropping NaNs:", merged)
+
+    if year in merged.columns:
+        merged = merged.dropna(subset=[year])
+    else:
+        return jsonify({"success": False, "error": f"Year {year} not found in data."})
+
+    derivative_map = {}
+    for county in merged.index:
+        formatted_county = f"{county.capitalize()} County"
+        original_county = reverse_mapping.get(county, county).lower().replace(" ", "")
+        print(f"Sending to derivative service: {original_county}")
+        response = requests.post('http://127.0.0.1:5002/calculate_derivative', json={'county': original_county})
+        if response.status_code == 200:
+            derivative_data = response.json()
+            derivative_value = derivative_data.get(year, 0)
+            derivative_map[formatted_county] = derivative_value
+            
+            merged.loc[county, f'Derivative_{year}'] = derivative_value  # Add a new column for the derivative
+        else:
+            print(f"Failed to fetch derivative data for county {original_county}")
+
+    # Print derivative values for debugging
+    for county, derivative_value in derivative_map.items():
+        print(f"County: {county}, Derivative Value: {derivative_value}")
+
+    if not merged.empty:
+        m = folium.Map(location=[47.7511, -120.7401], zoom_start=6, tiles=None)
+        folium.TileLayer('cartodbpositron', name='Grayscale').add_to(m)
+
+        if derivative_map:
+            min_val = min(derivative_map.values())
+            max_val = max(derivative_map.values())
+            colormap = folium.LinearColormap(['red', 'blue'], vmin=min_val, vmax=max_val)
+            print(f"Color scale - Min: {min_val}, Max: {max_val}")
+
+            folium.GeoJson(
+                merged.__geo_interface__,
+                style_function=lambda feature: {
+                    'fillColor': colormap(derivative_map.get(feature['properties']['NAMELSAD'], 0)) if 'NAMELSAD' in feature['properties'] else 'transparent',
+                    'color': 'black',
+                    'weight': 0.5,
+                    'fillOpacity': 0.7 if 'NAMELSAD' in feature['properties'] else 0,
+                },
+                tooltip=folium.GeoJsonTooltip(
+                    fields=['NAMELSAD', year, f'Derivative_{year}'],
+                    aliases=['County:', 'Price:', 'Derivative:'],
+                    localize=True,
+                    sticky=True
+                )
+            ).add_to(m)
+
+            colormap.caption = f'Derivative Values in {year}'
+            colormap.add_to(m)
+            m.save('templates/heatmap_derivative.html')
+
+            inject_slider_script('templates/heatmap_derivative.html', '/static/slider_control.js')
+
+            return render_template('heatmap_derivative.html', year=year)
+        else:
+            return jsonify({"success": False, "error": "No derivative values available."})
+    else:
+        return jsonify({"success": False, "error": "No valid data to plot."})
+
 
 @app.route('/heatmap')
 def heatmap():
@@ -236,16 +234,12 @@ def heatmap():
     show_heatmap = request.args.get('show_heatmap', 'false') == 'true'
     if show_heatmap:
         return render_template('heatmap.html', year=year)
-
     return render_template('index.html')
-
 
 def inject_slider_script(html_path, script_path):
     with open(html_path, 'r') as file:
         content = file.read()
-    
     script_tag = f'<script src="{script_path}"></script>'
-    
     if '</head>' in content:
         content = content.replace('</head>', f'{script_tag}\n</head>')
     elif '<script' in content:
@@ -257,8 +251,6 @@ def inject_slider_script(html_path, script_path):
             content = content.replace('</body>', f'{script_tag}\n</body>')
         else:
             content += f'\n{script_tag}'
-
-    # Write the modified content back to the file
     with open(html_path, 'w') as file:
         file.write(content)
 
@@ -268,4 +260,3 @@ inject_slider_script(heatmap_file_path, slider_script_path)
 
 if __name__ == '__main__':
     app.run(debug=True)
-
