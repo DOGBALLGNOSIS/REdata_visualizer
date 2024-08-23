@@ -13,11 +13,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var sliderContainer = document.createElement('div');
     sliderContainer.style.position = 'absolute';
-    sliderContainer.style.top = '50px';
-    sliderContainer.style.right = '10px';
+    sliderContainer.style.top = '70px';
+    sliderContainer.style.right = '50px';  // Adjusted position to ensure visibility
     sliderContainer.style.zIndex = '1000';
     sliderContainer.style.backgroundColor = 'white';
-    sliderContainer.style.padding = '10px';
+    sliderContainer.style.padding = '15px';
     sliderContainer.style.borderRadius = '5px';
     sliderContainer.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.1)';
 
@@ -34,13 +34,17 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     var derivativeButton = document.createElement('button');
-    derivativeButton.textContent = 'Toggle Derivative Mode';
+    derivativeButton.textContent = isDerivativeMode() ? 'Toggle Normal Mode' : 'Toggle Derivative Mode';
     derivativeButton.className = 'btn btn-secondary btn-sm mt-2';
     derivativeButton.style.marginTop = '10px';
 
     derivativeButton.addEventListener('click', function() {
         toggleDerivativeMode(yearSlider.value);
     });
+
+    // Scale up the slider and buttons
+    sliderContainer.style.transform = 'scale(1.3)';  // Scale up the entire container
+    yearSlider.style.width = '200px';  // Ensure the slider has enough width
 
     sliderContainer.appendChild(derivativeButton);
     sliderContainer.appendChild(backButton);
@@ -60,9 +64,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function toggleDerivativeMode(year) {
         const url = new URL(window.location.href);
-        url.pathname = '/heatmap_derivative_plot';
+        if (isDerivativeMode()) {
+            url.pathname = '/heatmap';
+            derivativeButton.textContent = 'Toggle Derivative Mode';
+        } else {
+            url.pathname = '/heatmap_derivative_plot';
+            derivativeButton.textContent = 'Toggle Normal Mode';
+        }
         url.searchParams.set('year', year);
         url.searchParams.set('show_heatmap', 'true');
         window.location.href = url.toString();
+    }
+
+    function isDerivativeMode() {
+        return window.location.pathname.includes('derivative');
     }
 });

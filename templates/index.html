@@ -32,10 +32,17 @@
                     <input type="checkbox" id="toggle-derivative">
                     <label for="toggle-derivative">Show Derivative Heatmap</label>
                 </div>
+                <!-- New Button for Aggregation -->
+                <div class="aggregate-data" style="margin-top: 20px;">
+                    <button id="aggregate-button" onclick="fetchAggregation()">Fetch Aggregation Data</button>
+                    <div id="aggregation-results"></div>
+                </div>
             </div>
         </div>
         <div class="content">
             <div class="graph-container" id="graph-container">
+                <!-- Caption for the Graph Visualizer -->
+                <h2 style="text-align: center; margin-bottom: 20px;">Washington State Median Home Price Per County</h2>
                 <div id="plot"></div>
             </div>
         </div>
@@ -43,6 +50,7 @@
 
     <script>
         let currentCounties = [];
+        let countyColors = {};
 
         function searchCounty() {
             let query = $('#search-input').val();
@@ -65,6 +73,9 @@
         function addCounty(county) {
             if (!currentCounties.includes(county)) {
                 currentCounties.push(county);
+                if (!countyColors[county]) {
+                    countyColors[county] = generateRandomColor();
+                }
                 updateCurrentList();
                 plotData();
             }
@@ -88,9 +99,8 @@
             let showPredictions = $('#toggle-predictions').is(':checked');
             let showHeatmap = $('#toggle-heatmap').is(':checked');
             let showDerivative = $('#toggle-derivative').is(':checked');
+            let showStatewideAverage = true; // Default to showing statewide average trendline
             let year = $('#time-slider').val() || '2024'; // Default to 2024 if undefined
-
-            console.log("Year from time-slider:", year);
 
             if (showDerivative) {
                 window.location.href = `/heatmap_derivative_plot?year=${year}&show_heatmap=true`;
@@ -102,6 +112,7 @@
                     data: { 
                         counties: currentCounties, 
                         show_predictions: showPredictions,
+                        show_statewide_average: showStatewideAverage, // Include statewide average trendline
                         year: year
                     },
                     traditional: true,
@@ -117,18 +128,77 @@
             }
         }
 
+        function toggleAggregation() {
+            let aggregationButton = $('#aggregate-button');
+            let aggregationResults = $('#aggregation-results');
+            
+            if (aggregationResults.is(':visible')) {
+                aggregationResults.hide();
+                aggregationButton.text('Show Aggregation Data');
+            } else {
+                aggregationResults.show();
+                aggregationButton.text('Hide Aggregation Data');
+            }
+        }
+
+        function fetchAggregation() {
+            if (currentCounties.length !== 1) {
+                alert("Please select exactly one county to fetch aggregation data.");
+                return;
+            }
+            let county = currentCounties[0];
+            $.ajax({
+                url: '/aggregate',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ 'county': county }),
+                success: function(data) {
+                    $('#aggregation-results').html(`
+                        <p><strong>County:</strong> ${data.county}</p>
+                        <p><strong>Average Price:</strong> $${data.average_price.toFixed(2)}</p>
+                        <p><strong>Median Price:</strong> $${data.median_price.toFixed(2)}</p>
+                        <p><strong>Standard Deviation:</strong> $${data.std_dev.toFixed(2)}</p>
+                    `).show();
+                    $('#aggregate-button').text('Hide Aggregation Data');
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error fetching aggregation data:', error);
+                    $('#aggregation-results').html('<p>Error fetching aggregation data.</p>').show();
+                    $('#aggregate-button').text('Hide Aggregation Data');
+                }
+            });
+        }
 
         $(document).ready(function() {
-            addCounty('Snohomish');
+            $('#aggregate-button').click(function() {
+                if ($('#aggregation-results').is(':visible')) {
+                    toggleAggregation();
+                } else {
+                    fetchAggregation();
+                }
+            });
+        });
+
+        function generateRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        $(document).ready(function() {
             $('#toggle-predictions').change(function() {
                 plotData();
             });
             $('#toggle-heatmap').change(function() {
                 plotData();
             });
-            $('#toggle-derivative').change(function() { // Add the change handler for the derivative toggle
+            $('#toggle-derivative').change(function() {
                 plotData();
             });
+            plotData(); // Initialize plot with statewide average trendline
         });
     </script>
 </body>

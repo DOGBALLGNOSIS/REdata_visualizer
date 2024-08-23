@@ -12,14 +12,9 @@ import requests
 
 app = Flask(__name__)
 
-# Define the path to the CSV file relative to the main directory
 csv_file_path = r"C:\zillow_visualizer\data\median_home_prices.csv"
-
-# Load data from CSV
 data = pd.read_csv(csv_file_path)
 data.columns = ['County'] + [str(year) for year in range(2015, 2025)]
-
-# Create a reverse mapping to restore original county names
 reverse_mapping = {county.lower().replace(" ", ""): county for county in data['County']}
 
 # Load GeoJSON data (manually pre-parsed for WA data currently)
@@ -50,15 +45,29 @@ def search():
     results = [county for county in available_counties if query in county.lower()]
     return jsonify(results)
 
+county_colors = {}
+
 @app.route('/plot')
 def plot():
     counties = request.args.getlist('counties')
     show_predictions = request.args.get('show_predictions', 'false') == 'true'
+    show_statewide_average = request.args.get('show_statewide_average', 'true') == 'true'
     year = request.args.get('year', '2024')
 
     # Initialize county_colors dictionary
-    county_colors = {}
+    
     fig = go.Figure()
+
+    if show_statewide_average:
+        # Calculate and plot the statewide average trendline
+        statewide_avg = data.drop(columns=['County']).mean()
+        fig.add_trace(go.Scatter(
+            x=statewide_avg.index,
+            y=statewide_avg.values,
+            mode='lines+markers',
+            name="Statewide Average",
+            line=dict(color='gray', dash='dash')
+        ))
 
     for county in counties:
         transformed_county = county.lower().replace(" ", "")
@@ -116,40 +125,52 @@ def plot():
 def heatmap_plot():
     year = request.args.get('year', '2024')
 
-    data['County'] = data['County'].str.lower().str.replace(" ", "")
-    geo_df['NAME'] = geo_df['NAME'].str.lower().str.replace(" ", "")
-    merged = geo_df.set_index('NAME').join(data.set_index('County'), how='inner', lsuffix='_geo', rsuffix='_data')
-    merged = merged.dropna(subset=[year])
+    response = requests.post('http://127.0.0.1:5004/prepare_heatmap_data', json={'year': year})
+    if response.status_code != 200:
+        return jsonify(response.json()), response.status_code
 
-    if not merged.empty:
-        m = folium.Map(location=[47.7511, -120.7401], zoom_start=6, tiles=None)
-        folium.TileLayer('cartodbpositron', name='Grayscale').add_to(m)
-        min_val = merged[year].min()
-        max_val = merged[year].max()
-        colormap = folium.LinearColormap(['lightblue', 'darkblue'], vmin=min_val, vmax=max_val)
+    heatmap_data = response.json()
+    m = folium.Map(location=[47.7511, -120.7401], zoom_start=6, tiles=None)
+    folium.TileLayer('cartodbpositron', name='Grayscale').add_to(m)
+    colormap = folium.LinearColormap(['lightblue', 'darkblue'], vmin=heatmap_data['min_val'], vmax=heatmap_data['max_val'])
 
-        folium.GeoJson(
-            merged.__geo_interface__,
-            style_function=lambda feature: {
-                'fillColor': colormap(feature['properties'][year]) if feature['properties'][year] else 'transparent',
-                'color': 'black',
-                'weight': 0.5,
-                'fillOpacity': 0.7 if feature['properties'][year] else 0,
-            },
-            tooltip=folium.GeoJsonTooltip(
-                fields=['NAMELSAD', year],
-                aliases=['County:', 'Median Home Price:'],
-                localize=True
-            )
-        ).add_to(m)
+    folium.GeoJson(
+        heatmap_data['data'],
+        style_function=lambda feature: {
+            'fillColor': colormap(feature['properties'][year]) if feature['properties'][year] else 'transparent',
+            'color': 'black',
+            'weight': 0.5,
+            'fillOpacity': 0.7 if feature['properties'][year] else 0,
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=['NAMELSAD', year],
+            aliases=['County:', 'Median Home Price:'],
+            localize=True
+        )
+    ).add_to(m)
 
-        colormap.caption = f'Median Home Prices in {year}'
-        colormap.add_to(m)
-        m.save('templates/heatmap.html')
-        inject_slider_script('templates/heatmap.html', '/static/slider_control.js')
-        return jsonify({"success": True, "year": year})
-    else:
-        return jsonify({"success": False, "error": "No valid data to plot."})
+    colormap.caption = f'Median Home Prices in {year}'
+    colormap.add_to(m)
+    m.save('templates/heatmap.html')
+    inject_slider_script('templates/heatmap.html', '/static/slider_control.js')
+    return jsonify({"success": True, "year": year})
+
+@app.route('/aggregate', methods=['POST'])
+def aggregate():
+    county = request.json.get('county')
+    if not county:
+        return jsonify({'error': 'County not provided'}), 400
+
+    # Call the aggregation service
+    try:
+        response = requests.post('http://127.0.0.1:5003/aggregate', json={'county': county})
+        if response.status_code != 200:
+            return jsonify(response.json()), response.status_code
+
+        aggregate_data = response.json()
+        return jsonify(aggregate_data)
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/heatmap_derivative_plot')
 def heatmap_derivative_plot():
@@ -260,3 +281,5 @@ inject_slider_script(heatmap_file_path, slider_script_path)
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
